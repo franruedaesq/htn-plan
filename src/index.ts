@@ -13,4 +13,4 @@ export type {
 
 export type { Domain as IDomain } from "./types";
 export { Domain } from "./domain";
-export { createPlanner } from "./planner";
+export { createPlanner, Planner } from "./planner";
