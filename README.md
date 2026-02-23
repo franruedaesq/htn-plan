@@ -67,6 +67,19 @@ ResearchAPI → [SearchGoogle, ReadDocs, Summarize]
 
 One engine. Any domain. Zero coupling to the real world.
 
+### 🧠 LLM Orchestration (Neuro-Symbolic AI)
+
+LLMs are great at reasoning but terrible at long-term rigid planning. Use the LLM to translate natural language into your HTN state, and use `htn-plan` to strictly orchestrate the LLM's tool calls without hallucinations.
+
+```
+User: "Research quantum computing and write a summary"
+
+LLM translates → HTN state: { topic: "quantum computing", hasSummary: false }
+HTN plan       → [SearchWeb, ReadSources, ExtractKeyPoints, WriteSummary]
+
+Every tool call is gated by a precondition — no hallucinated steps, no skipped actions.
+```
+
 ---
 
 ## Installation
@@ -166,6 +179,50 @@ Creates a planner instance and returns an object with a single `plan()` method.
 ```
 
 Failure reasons: `"UNKNOWN_TASK"` | `"OPERATOR_PRECONDITION_FAILED"` | `"NO_APPLICABLE_METHOD"`
+
+---
+
+### `Domain<TState>` — Fluent Builder
+
+Instead of constructing the plain `Domain` object literal shown in Quick Start, you can use the `Domain` class for a chainable, incremental registration API:
+
+```typescript
+import { Domain, createPlanner } from 'htn-plan';
+
+const domain = new Domain<RobotState>()
+  .registerOperator({
+    name: 'MoveToKitchen',
+    condition: (s) => s.batteryLevel > 0 && s.location !== 'Kitchen',
+    effect:    (s) => ({ ...s, location: 'Kitchen' }),
+  })
+  .registerOperator({
+    name: 'PourCoffee',
+    condition: (s) => s.location === 'Kitchen' && !s.hasItem,
+    effect:    (s) => ({ ...s, hasItem: true }),
+  })
+  .registerOperator({
+    name: 'ReturnToStart',
+    condition: (s) => s.hasItem,
+    effect:    (s) => ({ ...s, location: 'Start' }),
+  })
+  .registerMethod('FetchCoffee', {
+    name: 'StandardFetch',
+    condition: () => true,
+    subtasks: ['MoveToKitchen', 'PourCoffee', 'ReturnToStart'],
+  });
+
+// Pass the Domain instance directly — it implements the Domain<TState> interface
+const result = createPlanner({
+  domain,
+  initialState: { location: 'Hall', hasItem: false, batteryLevel: 100 },
+  goals: ['FetchCoffee'],
+}).plan();
+```
+
+| Method | Returns | Description |
+|---|---|---|
+| `.registerOperator(operator)` | `this` | Adds (or overwrites) a primitive task. |
+| `.registerMethod(taskName, method)` | `this` | Appends a decomposition method to a compound task (created on first use). |
 
 ---
 
