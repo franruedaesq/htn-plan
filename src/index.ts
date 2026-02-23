@@ -3,7 +3,6 @@ export type {
   Operator,
   Method,
   CompoundTask,
-  Domain,
   PlannerConfig,
   Plan,
   PlanningFailureReason,
@@ -12,4 +11,6 @@ export type {
   PlanningResult,
 } from "./types";
 
+export type { Domain as IDomain } from "./types";
+export { Domain } from "./domain";
 export { createPlanner } from "./planner";
