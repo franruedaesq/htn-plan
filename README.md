@@ -224,9 +224,77 @@ const result = createPlanner({
 | `.registerOperator(operator)` | `this` | Adds (or overwrites) a primitive task. |
 | `.registerMethod(taskName, method)` | `this` | Appends a decomposition method to a compound task (created on first use). |
 
+### `Domain.validate()`
+
+Eagerly checks that every subtask name referenced in all registered methods resolves to a known operator or compound task. Call this once after building the domain to surface broken references (e.g. typos) before running the planner.
+
+```typescript
+import { Domain, DomainValidationError } from 'htn-plan';
+
+try {
+  const domain = new Domain<RobotState>()
+    .registerOperator({ name: 'Move', condition: () => true, effect: (s) => s })
+    .registerMethod('FetchCoffee', {
+      name: 'StandardFetch',
+      condition: () => true,
+      subtasks: ['Move', 'PourCoffee'], // 'PourCoffee' not yet registered
+    })
+    .validate(); // throws DomainValidationError: "PourCoffee" is unresolved
+} catch (err) {
+  if (err instanceof DomainValidationError) {
+    console.error(`Unresolved subtask: ${err.unresolvedTask}`);
+  }
+}
+```
+
 ---
 
-### Type Reference (`src/types.ts`)
+### Observability Hooks
+
+Pass a `hooks` object to `createPlanner` to trace every planning decision. Useful for debugging complex domains, collecting metrics, or powering a visual plan inspector.
+
+```typescript
+import { createPlanner } from 'htn-plan';
+import type { PlannerHooks } from 'htn-plan';
+
+const hooks: PlannerHooks<RobotState> = {
+  onTaskExpand:    (name, depth)         => console.log(`[${'  '.repeat(depth)}] expand: ${name}`),
+  onMethodTry:     (task, method, depth) => console.log(`[${'  '.repeat(depth)}] try: ${task}/${method}`),
+  onBacktrack:     (task, method, depth) => console.log(`[${'  '.repeat(depth)}] backtrack: ${task}/${method}`),
+  onOperatorApply: (name, before, after) => console.log(`apply: ${name}`, { before, after }),
+};
+
+const result = createPlanner({
+  domain,
+  initialState: { location: 'Hall', hasItem: false, batteryLevel: 100 },
+  goals: ['FetchCoffee'],
+  hooks,
+}).plan();
+```
+
+| Hook | Signature | Called when |
+|---|---|---|
+| `onTaskExpand` | `(taskName, depth) => void` | Any task (operator or compound) is dequeued |
+| `onMethodTry` | `(taskName, methodName, depth) => void` | A decomposition method is attempted |
+| `onBacktrack` | `(taskName, methodName, depth) => void` | A method branch fails and the planner backtracks |
+| `onOperatorApply` | `(operatorName, stateBefore, stateAfter) => void` | An operator's effect is applied |
+
+---
+
+### Error Classes
+
+```typescript
+import { PlannerMaxDepthError, DomainValidationError } from 'htn-plan';
+```
+
+| Class | Thrown by | Reason |
+|---|---|---|
+| `PlannerMaxDepthError` | `createPlanner().plan()` | Recursion depth exceeded (cyclic decomposition) |
+| `DomainValidationError` | `Domain.validate()` | A subtask references an unregistered task |
+
+Both extend `Error` and have `name` set to their class name for easy `instanceof` checks.
+
+---
 
 ```typescript
 // World state — any plain object you define

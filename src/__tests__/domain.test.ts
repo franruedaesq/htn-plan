@@ -190,3 +190,28 @@ describe("Domain – IDomain interface compatibility", () => {
     expect(result.plan.map((o) => o.name)).toEqual(["Move", "Grab"]);
   });
 });
+
+// ── Input validation ──────────────────────────────────────────────────────────
+
+describe("Domain – input validation", () => {
+  it("throws TypeError when registering an operator with an empty name", () => {
+    const domain = new Domain<RobotState>();
+    expect(() =>
+      domain.registerOperator({ name: "", condition: () => true, effect: (s) => s })
+    ).toThrow(TypeError);
+  });
+
+  it("throws TypeError when registerMethod is called with an empty taskName", () => {
+    const domain = new Domain<RobotState>();
+    expect(() =>
+      domain.registerMethod("", { name: "SomeMethod", condition: () => true, subtasks: [] })
+    ).toThrow(TypeError);
+  });
+
+  it("throws TypeError when registerMethod is called with an empty method name", () => {
+    const domain = new Domain<RobotState>();
+    expect(() =>
+      domain.registerMethod("Task", { name: "", condition: () => true, subtasks: [] })
+    ).toThrow(TypeError);
+  });
+});
