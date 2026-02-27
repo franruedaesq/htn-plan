@@ -1,4 +1,5 @@
 import type { Domain as IDomain, Operator, Method, CompoundTask } from "./types";
+import { DomainValidationError } from "./errors";
 
 /**
  * A mutable registry that builds a Domain by incrementally registering
@@ -91,5 +92,38 @@ export class Domain<TState> implements IDomain<TState> {
       }
     }
     return undefined;
+  }
+
+  /**
+   * Eagerly validates that every subtask name referenced inside all registered
+   * methods resolves to either a known operator or a known compound task.
+   *
+   * Call this once after building the domain and before running the planner
+   * to surface broken references early (e.g. a typo in a subtask name).
+   *
+   * @throws {DomainValidationError} if any subtask name is unresolved.
+   * @returns `this` for fluent chaining.
+   *
+   * @example
+   * ```ts
+   * const domain = new Domain<MyState>()
+   *   .registerOperator(myOp)
+   *   .registerMethod("Task", myMethod)
+   *   .validate(); // throws DomainValidationError if "myMethod" references an unknown task
+   * ```
+   */
+  validate(): this {
+    for (const taskName of Object.keys(this.compoundTasks)) {
+      for (const method of this._compoundMethods[taskName] ?? []) {
+        for (const subtask of method.subtasks) {
+          const isOperator = Object.prototype.hasOwnProperty.call(this.operators, subtask);
+          const isCompound = Object.prototype.hasOwnProperty.call(this.compoundTasks, subtask);
+          if (!isOperator && !isCompound) {
+            throw new DomainValidationError(subtask);
+          }
+        }
+      }
+    }
+    return this;
   }
 }

@@ -74,6 +74,66 @@ export interface Domain<TState> {
 }
 
 /**
+ * Optional callback hooks for observing and debugging the planning process.
+ * Each hook is called synchronously during the DFS search; they are safe to
+ * use for logging or telemetry but must not throw.
+ *
+ * @template TState - The shape of the world state.
+ *
+ * @example
+ * ```ts
+ * const hooks: PlannerHooks<MyState> = {
+ *   onTaskExpand:    (name, depth) => console.log(`[${depth}] expand: ${name}`),
+ *   onMethodTry:     (task, method, depth) => console.log(`[${depth}] try: ${task}/${method}`),
+ *   onBacktrack:     (task, method, depth) => console.log(`[${depth}] backtrack: ${task}/${method}`),
+ *   onOperatorApply: (name) => console.log(`apply: ${name}`),
+ * };
+ * ```
+ */
+export interface PlannerHooks<TState> {
+  /**
+   * Called each time the planner dequeues a task for processing.
+   *
+   * @param taskName - The name of the task being expanded.
+   * @param depth    - Current recursion depth (0 = top-level).
+   */
+  onTaskExpand?: (taskName: string, depth: number) => void;
+
+  /**
+   * Called each time the planner attempts a decomposition method.
+   *
+   * @param taskName   - The compound task being decomposed.
+   * @param methodName - The name of the method being tried.
+   * @param depth      - Current recursion depth.
+   */
+  onMethodTry?: (taskName: string, methodName: string, depth: number) => void;
+
+  /**
+   * Called when a method branch leads to a dead-end and the planner
+   * backtracks to try the next method.
+   *
+   * @param taskName   - The compound task that triggered the backtrack.
+   * @param methodName - The method that was abandoned.
+   * @param depth      - Current recursion depth.
+   */
+  onBacktrack?: (taskName: string, methodName: string, depth: number) => void;
+
+  /**
+   * Called immediately after an operator's effect is applied to the
+   * simulated world state.
+   *
+   * @param operatorName - The name of the operator that was applied.
+   * @param stateBefore  - The world state before the effect was applied (read-only).
+   * @param stateAfter   - The world state after the effect was applied (read-only).
+   */
+  onOperatorApply?: (
+    operatorName: string,
+    stateBefore: Readonly<TState>,
+    stateAfter: Readonly<TState>
+  ) => void;
+}
+
+/**
  * Configuration options accepted by the planner.
  *
  * @template TState - The shape of the world state.
@@ -85,6 +145,12 @@ export interface PlannerConfig<TState> {
   initialState: TState;
   /** Top-level goal task names (resolved left-to-right). */
   goals: ReadonlyArray<string>;
+  /**
+   * Optional observability hooks called during the DFS search.
+   * Use these to trace planning decisions, collect metrics, or power
+   * a visual debugger.
+   */
+  hooks?: PlannerHooks<TState>;
 }
 
 /**

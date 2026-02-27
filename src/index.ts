@@ -4,6 +4,7 @@ export type {
   Method,
   CompoundTask,
   PlannerConfig,
+  PlannerHooks,
   Plan,
   PlanningFailureReason,
   PlanningFailure,
@@ -13,4 +14,5 @@ export type {
 
 export type { Domain as IDomain } from "./types";
 export { Domain } from "./domain";
-export { createPlanner, Planner, PlannerMaxDepthError } from "./planner";
+export { createPlanner, Planner } from "./planner";
+export { PlannerMaxDepthError, DomainValidationError } from "./errors";
