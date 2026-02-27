@@ -25,9 +25,9 @@ The engine takes a high-level goal, recursively breaks it down through Methods, 
 
 ---
 
-## The Dopamine Moment 🚀
+## Example Output
 
-You type a single two-word command into your terminal, hit Enter, and watch the engine **explode** that command into a deeply nested tree of perfectly ordered, executable micro-tasks:
+Given a single high-level goal, the engine produces a fully decomposed, flat execution plan:
 
 ```
 Goal: "FetchCoffee"
