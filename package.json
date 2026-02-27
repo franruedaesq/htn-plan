@@ -1,6 +1,6 @@
 {
   "name": "htn-plan",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "A pure TypeScript Hierarchical Task Network (HTN) planner",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
