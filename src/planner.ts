@@ -2,8 +2,12 @@ import type {
   Domain,
   Operator,
   PlannerConfig,
+  PlannerHooks,
   PlanningResult,
 } from "./types";
+import { PlannerMaxDepthError } from "./errors";
+
+export { PlannerMaxDepthError, DomainValidationError } from "./errors";
 
 /** Maximum recursion depth allowed before the planner aborts with an error. */
 const MAX_RECURSION_DEPTH = 1000;
@@ -56,20 +60,6 @@ function findFirstUnknownTask<TState>(
 }
 
 /**
- * Thrown when the HTN planner exceeds {@link MAX_RECURSION_DEPTH} recursive
- * calls, which typically indicates a cyclic task decomposition (infinite loop).
- */
-export class PlannerMaxDepthError extends Error {
-  constructor() {
-    super(
-      `HTN planner exceeded the maximum recursion depth of ${MAX_RECURSION_DEPTH}. ` +
-        "This usually indicates a cyclic task decomposition."
-    );
-    this.name = "PlannerMaxDepthError";
-  }
-}
-
-/**
  * Internal recursive DFS solver with backtracking.
  *
  * @param tasks   Remaining task names to process.
@@ -77,6 +67,7 @@ export class PlannerMaxDepthError extends Error {
  * @param domain  Full domain description.
  * @param plan    Operators accumulated so far (mutated in place, rewound on backtrack).
  * @param depth   Current recursion depth (used for infinite-loop protection).
+ * @param hooks   Optional observability callbacks.
  * @returns       The completed flat plan on success, or null when no plan exists.
  */
 function solve<TState>(
@@ -84,10 +75,11 @@ function solve<TState>(
   state: TState,
   domain: Domain<TState>,
   plan: Operator<TState>[],
-  depth: number
+  depth: number,
+  hooks: PlannerHooks<TState> | undefined
 ): { plan: Operator<TState>[]; finalState: TState } | null {
   if (depth > MAX_RECURSION_DEPTH) {
-    throw new PlannerMaxDepthError();
+    throw new PlannerMaxDepthError(MAX_RECURSION_DEPTH);
   }
 
   // Base case: no more tasks → plan is complete.
@@ -96,6 +88,8 @@ function solve<TState>(
   }
 
   const [current, ...rest] = tasks;
+
+  hooks?.onTaskExpand?.(current, depth);
 
   // ── Primitive task (Operator) ────────────────────────────────────────────
   if (hasOwnTask(domain.operators as Record<string, unknown>, current)) {
@@ -107,8 +101,9 @@ function solve<TState>(
     }
 
     const nextState = operator.effect(state);
+    hooks?.onOperatorApply?.(current, state, nextState);
     plan.push(operator);
-    const result = solve(rest, nextState, domain, plan, depth + 1);
+    const result = solve(rest, nextState, domain, plan, depth + 1, hooks);
     if (result !== null) {
       return result;
     }
@@ -126,13 +121,16 @@ function solve<TState>(
         continue; // Try next method.
       }
 
+      hooks?.onMethodTry?.(current, method.name, depth);
+
       // Inline the subtasks in front of the remaining tasks and recurse.
       const expanded = [...method.subtasks, ...rest];
-      const result = solve(expanded, state, domain, plan, depth + 1);
+      const result = solve(expanded, state, domain, plan, depth + 1, hooks);
       if (result !== null) {
         return result;
       }
       // This method led to a dead-end → try the next one (backtracking).
+      hooks?.onBacktrack?.(current, method.name, depth);
     }
 
     // All methods exhausted with no solution.
@@ -176,7 +174,7 @@ export function createPlanner<TState>(config: PlannerConfig<TState>) {
         };
       }
 
-      const result = solve([...goals], initialState, domain, [], 0);
+      const result = solve([...goals], initialState, domain, [], 0, config.hooks);
 
       if (result === null) {
         // Determine the best failure reason by inspecting goal tasks.
