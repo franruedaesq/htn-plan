@@ -32,9 +32,13 @@ export class Domain<TState> implements IDomain<TState> {
    * Register a primitive task (Operator).
    * Overwrites any existing operator with the same name.
    *
+   * @throws {TypeError} if `operator.name` is an empty string.
    * @returns `this` for fluent chaining.
    */
   registerOperator(operator: Operator<TState>): this {
+    if (operator.name === "") {
+      throw new TypeError("Operator name must not be empty.");
+    }
     this.operators[operator.name] = operator;
     return this;
   }
@@ -44,10 +48,17 @@ export class Domain<TState> implements IDomain<TState> {
    * `taskName`.  The compound task entry is created automatically on first
    * use; subsequent calls append methods in registration order.
    *
+   * @throws {TypeError} if `taskName` or `method.name` is an empty string.
    * @returns `this` for fluent chaining.
    */
   registerMethod(taskName: string, method: Method<TState>): this {
-    if (!(taskName in this._compoundMethods)) {
+    if (taskName === "") {
+      throw new TypeError("Task name must not be empty.");
+    }
+    if (method.name === "") {
+      throw new TypeError("Method name must not be empty.");
+    }
+    if (!Object.prototype.hasOwnProperty.call(this._compoundMethods, taskName)) {
       this._compoundMethods[taskName] = [];
       this.compoundTasks[taskName] = {
         name: taskName,
