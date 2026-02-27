@@ -1,4 +1,4 @@
-import { createPlanner } from "../planner";
+import { createPlanner, PlannerMaxDepthError } from "../planner";
 import type { Domain, Operator } from "../types";
 
 // ── Shared domain types ──────────────────────────────────────────────────────
@@ -422,5 +422,38 @@ describe("createPlanner – output immutability", () => {
     if (!result.success) return;
     const op: Operator<RobotState> = result.plan[0];
     expect(op).toBe(domain.operators["MoveToKitchen"]);
+  });
+});
+
+// ── Infinite loop protection ──────────────────────────────────────────────────
+
+describe("createPlanner – infinite loop protection", () => {
+  it("throws PlannerMaxDepthError when task decomposition is cyclic", () => {
+    // A compound task whose only method re-expands to itself, creating an
+    // infinite recursion that the depth guard must catch.
+    interface S { x: number }
+    const domain: Domain<S> = {
+      operators: {},
+      compoundTasks: {
+        CyclicTask: {
+          name: "CyclicTask",
+          methods: [
+            {
+              name: "CyclicMethod",
+              condition: (_s) => true,
+              subtasks: ["CyclicTask"],
+            },
+          ],
+        },
+      },
+    };
+
+    expect(() =>
+      createPlanner({
+        domain,
+        initialState: { x: 0 },
+        goals: ["CyclicTask"],
+      }).plan()
+    ).toThrow(PlannerMaxDepthError);
   });
 });

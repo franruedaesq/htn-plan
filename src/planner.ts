@@ -5,6 +5,23 @@ import type {
   PlanningResult,
 } from "./types";
 
+/** Maximum recursion depth allowed before the planner aborts with an error. */
+const MAX_RECURSION_DEPTH = 1000;
+
+/**
+ * Thrown when the HTN planner exceeds {@link MAX_RECURSION_DEPTH} recursive
+ * calls, which typically indicates a cyclic task decomposition (infinite loop).
+ */
+export class PlannerMaxDepthError extends Error {
+  constructor() {
+    super(
+      `HTN planner exceeded the maximum recursion depth of ${MAX_RECURSION_DEPTH}. ` +
+        "This usually indicates a cyclic task decomposition."
+    );
+    this.name = "PlannerMaxDepthError";
+  }
+}
+
 /**
  * Internal recursive DFS solver with backtracking.
  *
@@ -12,14 +29,20 @@ import type {
  * @param state   Current simulated world state.
  * @param domain  Full domain description.
  * @param plan    Operators accumulated so far (mutated in place, rewound on backtrack).
+ * @param depth   Current recursion depth (used for infinite-loop protection).
  * @returns       The completed flat plan on success, or null when no plan exists.
  */
 function solve<TState>(
   tasks: string[],
   state: TState,
   domain: Domain<TState>,
-  plan: Operator<TState>[]
+  plan: Operator<TState>[],
+  depth: number
 ): { plan: Operator<TState>[]; finalState: TState } | null {
+  if (depth > MAX_RECURSION_DEPTH) {
+    throw new PlannerMaxDepthError();
+  }
+
   // Base case: no more tasks → plan is complete.
   if (tasks.length === 0) {
     return { plan: [...plan], finalState: state };
@@ -38,7 +61,7 @@ function solve<TState>(
 
     const nextState = operator.effect(state);
     plan.push(operator);
-    const result = solve(rest, nextState, domain, plan);
+    const result = solve(rest, nextState, domain, plan, depth + 1);
     if (result !== null) {
       return result;
     }
@@ -58,7 +81,7 @@ function solve<TState>(
 
       // Inline the subtasks in front of the remaining tasks and recurse.
       const expanded = [...method.subtasks, ...rest];
-      const result = solve(expanded, state, domain, plan);
+      const result = solve(expanded, state, domain, plan, depth + 1);
       if (result !== null) {
         return result;
       }
@@ -106,7 +129,7 @@ export function createPlanner<TState>(config: PlannerConfig<TState>) {
         }
       }
 
-      const result = solve([...goals], initialState, domain, []);
+      const result = solve([...goals], initialState, domain, [], 0);
 
       if (result === null) {
         // Determine the best failure reason by inspecting goal tasks.
