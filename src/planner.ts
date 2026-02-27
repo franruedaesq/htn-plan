@@ -178,3 +178,36 @@ export function createPlanner<TState>(config: PlannerConfig<TState>) {
     },
   };
 }
+
+/**
+ * HTN Planner class that resolves a task list against a domain using
+ * Depth-First Search with backtracking.
+ *
+ * @template TState - The shape of the world state.
+ *
+ * @example
+ * ```ts
+ * const planner = new Planner<RobotState>();
+ * const result = planner.resolve(initialState, domain, ["FetchCoffee"]);
+ * if (result.success) {
+ *   result.plan.forEach(op => console.log(op.name));
+ * }
+ * ```
+ */
+export class Planner<TState> {
+  /**
+   * Runs the HTN planning algorithm using Depth-First Search and backtracking.
+   *
+   * @param state   The initial world state before planning begins.
+   * @param domain  The domain describing all available tasks.
+   * @param tasks   Top-level goal task names (resolved left-to-right).
+   * @returns       A {@link PlanningResult} with either a flat ordered plan or a failure descriptor.
+   */
+  resolve(
+    state: TState,
+    domain: Domain<TState>,
+    tasks: string[]
+  ): PlanningResult<TState> {
+    return createPlanner({ domain, initialState: state, goals: tasks }).plan();
+  }
+}
