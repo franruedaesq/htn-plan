@@ -9,6 +9,53 @@ import type {
 const MAX_RECURSION_DEPTH = 1000;
 
 /**
+ * Returns true only when `key` is an **own** (non-inherited) property of
+ * `obj`.  This guards every task-name lookup against prototype-pollution
+ * attacks: names such as `"__proto__"`, `"constructor"`, or `"toString"`
+ * exist on every plain-object prototype chain and would otherwise pass a
+ * naïve `key in obj` check even when no such task has been registered.
+ */
+function hasOwnTask(obj: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(obj, key);
+}
+
+/**
+ * Walks every task reachable from `roots` via method subtask lists and
+ * returns the name of the first task that is not registered in the domain,
+ * or `null` when all reachable tasks are known.
+ *
+ * This pre-validation lets the planner report a precise `UNKNOWN_TASK`
+ * failure even when the unknown task is buried deep inside a method's
+ * subtask list, rather than only catching unknown top-level goals.
+ */
+function findFirstUnknownTask<TState>(
+  roots: ReadonlyArray<string>,
+  domain: Domain<TState>
+): string | null {
+  const visited = new Set<string>();
+  const queue: string[] = [...roots];
+  while (queue.length > 0) {
+    const task = queue.shift()!;
+    if (visited.has(task)) continue;
+    visited.add(task);
+
+    if (hasOwnTask(domain.operators as Record<string, unknown>, task)) continue;
+
+    if (hasOwnTask(domain.compoundTasks as Record<string, unknown>, task)) {
+      for (const method of domain.compoundTasks[task]!.methods) {
+        for (const subtask of method.subtasks) {
+          queue.push(subtask);
+        }
+      }
+      continue;
+    }
+
+    return task; // Not found in operators or compoundTasks.
+  }
+  return null;
+}
+
+/**
  * Thrown when the HTN planner exceeds {@link MAX_RECURSION_DEPTH} recursive
  * calls, which typically indicates a cyclic task decomposition (infinite loop).
  */
@@ -51,7 +98,7 @@ function solve<TState>(
   const [current, ...rest] = tasks;
 
   // ── Primitive task (Operator) ────────────────────────────────────────────
-  if (current in domain.operators) {
+  if (hasOwnTask(domain.operators as Record<string, unknown>, current)) {
     const operator = domain.operators[current];
 
     if (!operator.condition(state)) {
@@ -71,7 +118,7 @@ function solve<TState>(
   }
 
   // ── Compound task ────────────────────────────────────────────────────────
-  if (current in domain.compoundTasks) {
+  if (hasOwnTask(domain.compoundTasks as Record<string, unknown>, current)) {
     const compound = domain.compoundTasks[current];
 
     for (const method of compound.methods) {
@@ -116,17 +163,17 @@ export function createPlanner<TState>(config: PlannerConfig<TState>) {
     plan(): PlanningResult<TState> {
       const { domain, initialState, goals } = config;
 
-      // Validate that all goal tasks exist in the domain.
-      for (const goal of goals) {
-        const known =
-          goal in domain.operators || goal in domain.compoundTasks;
-        if (!known) {
-          return {
-            success: false,
-            reason: "UNKNOWN_TASK",
-            failedTask: goal,
-          };
-        }
+      // Pre-validate: walk every task reachable from the goals (including all
+      // subtasks referenced by methods) and fail fast with a precise error if
+      // any task name is not registered.  This replaces the old goal-only check
+      // and ensures UNKNOWN_TASK is reported even for deeply nested subtasks.
+      const unknownTask = findFirstUnknownTask(goals, domain);
+      if (unknownTask !== null) {
+        return {
+          success: false,
+          reason: "UNKNOWN_TASK",
+          failedTask: unknownTask,
+        };
       }
 
       const result = solve([...goals], initialState, domain, [], 0);
@@ -135,14 +182,7 @@ export function createPlanner<TState>(config: PlannerConfig<TState>) {
         // Determine the best failure reason by inspecting goal tasks.
         // For a precise per-task reason we do a lightweight single-pass check.
         for (const goal of goals) {
-          if (!(goal in domain.operators) && !(goal in domain.compoundTasks)) {
-            return {
-              success: false,
-              reason: "UNKNOWN_TASK",
-              failedTask: goal,
-            };
-          }
-          if (goal in domain.operators) {
+          if (hasOwnTask(domain.operators as Record<string, unknown>, goal)) {
             const op = domain.operators[goal];
             if (!op.condition(initialState)) {
               return {
@@ -152,7 +192,7 @@ export function createPlanner<TState>(config: PlannerConfig<TState>) {
               };
             }
           }
-          if (goal in domain.compoundTasks) {
+          if (hasOwnTask(domain.compoundTasks as Record<string, unknown>, goal)) {
             const compound = domain.compoundTasks[goal];
             const anyApplicable = compound.methods.some((m) =>
               m.condition(initialState)
@@ -166,7 +206,7 @@ export function createPlanner<TState>(config: PlannerConfig<TState>) {
             }
           }
         }
-        // Generic failure (e.g. a sub-task deep in the tree failed).
+        // Generic failure (e.g. a sub-task precondition failed deep in the tree).
         return {
           success: false,
           reason: "NO_APPLICABLE_METHOD",
@@ -206,7 +246,7 @@ export class Planner<TState> {
   resolve(
     state: TState,
     domain: Domain<TState>,
-    tasks: string[]
+    tasks: ReadonlyArray<string>
   ): PlanningResult<TState> {
     return createPlanner({ domain, initialState: state, goals: tasks }).plan();
   }

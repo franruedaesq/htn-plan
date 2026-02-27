@@ -457,3 +457,73 @@ describe("createPlanner – infinite loop protection", () => {
     ).toThrow(PlannerMaxDepthError);
   });
 });
+
+// ── Unknown sub-task detection ────────────────────────────────────────────────
+
+describe("createPlanner – unknown sub-task detection", () => {
+  it("returns UNKNOWN_TASK when a method references an unregistered subtask", () => {
+    interface S { x: number }
+    const domain: Domain<S> = {
+      operators: {},
+      compoundTasks: {
+        TopLevel: {
+          name: "TopLevel",
+          methods: [
+            {
+              name: "TheMethod",
+              condition: (_s) => true,
+              subtasks: ["UnregisteredSubTask"],
+            },
+          ],
+        },
+      },
+    };
+
+    const result = createPlanner({
+      domain,
+      initialState: { x: 0 },
+      goals: ["TopLevel"],
+    }).plan();
+
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.reason).toBe("UNKNOWN_TASK");
+    expect(result.failedTask).toBe("UnregisteredSubTask");
+  });
+});
+
+// ── Prototype-pollution safety ────────────────────────────────────────────────
+
+describe("createPlanner – prototype-pollution safety", () => {
+  it('treats "__proto__" as an unknown task instead of resolving to Object prototype', () => {
+    interface S { x: number }
+    const domain: Domain<S> = { operators: {}, compoundTasks: {} };
+
+    const result = createPlanner({
+      domain,
+      initialState: { x: 0 },
+      goals: ["__proto__"],
+    }).plan();
+
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.reason).toBe("UNKNOWN_TASK");
+    expect(result.failedTask).toBe("__proto__");
+  });
+
+  it('treats "constructor" as an unknown task instead of resolving to Object constructor', () => {
+    interface S { x: number }
+    const domain: Domain<S> = { operators: {}, compoundTasks: {} };
+
+    const result = createPlanner({
+      domain,
+      initialState: { x: 0 },
+      goals: ["constructor"],
+    }).plan();
+
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.reason).toBe("UNKNOWN_TASK");
+    expect(result.failedTask).toBe("constructor");
+  });
+});
